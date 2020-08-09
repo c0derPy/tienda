@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Order;
+
 
 class OrderController extends Controller
 {
@@ -13,7 +15,8 @@ class OrderController extends Controller
      */
     public function index()
     {
-        return view('order.index');
+        $orders = Order::all();
+        return view('order.index', ['orders' => $orders]);
     }
 
     /**
@@ -34,7 +37,23 @@ class OrderController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $validateData = $request->validate([
+            'name' => 'required|max:80',
+            'email' => 'required|max:120',
+            'mobile' => 'required|max:40',
+            'description' => 'required|max:200',
+            'money' => 'required',
+            'total' => 'required'
+        ]);
+        
+        $order = new Order;
+        $order->customer_name = $request->get('name');
+        $order->customer_email = $request->get('email');
+        $order->customer_mobile = $request->get('mobile');
+        $order->status = 'CREATED';
+        $order->save();
+        
+        return redirect('order')->with('status', 'Order successfull!');
     }
 
     /**
