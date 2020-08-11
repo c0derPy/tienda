@@ -10,7 +10,6 @@
 
     <h1>Orders</h1>
     <hr>
-    <a href="{{ url('order/create') }}"><button class="btn btn-info">Generate Order</button></a>
     <br><br>
     @if (session('status'))
         <div class="alert alert-success">

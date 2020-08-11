@@ -40,17 +40,18 @@
         </p>
         <div class="form-row">
             <div class="col">
-                <label for="">Moneda:</label><br>
-                <input type="text" name="money" id="" class="form-control form-control-sm" value="COP" readonly>
+                <label for="">currency:</label><br>
+                <input type="text" name="currency" id="" class="form-control form-control-sm" value="COP" readonly>
             </div>
             <div class="col">
                 <label for="">Total:</label><br>
-                <input type="text" name="total" id="" class="form-control form-control-sm" value="200.000" readonly>
+                <input type="text" name="total" id="" class="form-control form-control-sm" value="1000000" readonly>
             </div>    
         </div>
         <br>
         <p>
-            <input type="submit" name="" id="" class="btn btn-success" value="Continuar..">
+            <input type="submit" name="" id="" class="btn btn-success" value="Continue..">
         </p>    
     </form>
+
 @endsection

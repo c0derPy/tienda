@@ -16,4 +16,8 @@ class Order extends Model
         'status'
     ];
 
+    public function payment(){
+        return $this->hasOne('App\Models\Payment');
+    }
+
 }
