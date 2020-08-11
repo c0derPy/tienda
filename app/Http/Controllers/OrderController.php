@@ -10,6 +10,11 @@ use GuzzleHttp\Client;
 
 class OrderController extends Controller
 {
+    public function __construct(){
+        $this->api_url = env('API_ENDPOINT');
+        $this->api_login = env('API_LOGIN');
+        $this->api_secretKey = env('API_SECRET_KEY');
+    }
     /**
      * Display a listing of the resource.
      *
@@ -32,13 +37,14 @@ class OrderController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created resource Order and Payment
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
     public function store(Request $request)
     {
+        # Validations fields
         $validateData = $request->validate([
             'name' => 'required|max:80',
             'email' => 'required|max:120',
@@ -48,6 +54,7 @@ class OrderController extends Controller
             'total' => 'required'
         ]);
         
+        # Save Order
         $order = new Order;
         $order->customer_name = $request->get('name');
         $order->customer_email = $request->get('email');
@@ -55,6 +62,7 @@ class OrderController extends Controller
         $order->status = 'CREATED';
         $order->save();
         
+        # Save payment
         $payment = new Payment();
         $payment->description = $request->get('description');
         $payment->reference = '5976030f5575d';
@@ -68,22 +76,24 @@ class OrderController extends Controller
         return redirect(url('order', [$order->id]))->with(['status' => 'NEW']);
     }
 
-    public function webCheckout($order_id){
-        $order = Order::findOrFail($order_id);
-        $body_request = $this->generate_body_request($order);
-        $client = new Client(['headers' => ['Content-Type' => 'application/json']]);
-        $request = $client->post('https://dev.placetopay.com/redirection/api/session/', ["body" => $body_request]);
-        $response = $request->getBody();
-        $decode_response = json_decode($response);
-        $processUrl = $decode_response->processUrl;
-        $requestId = $decode_response->requestId;
-        $order->payment->request_id = $requestId;
-        $order->payment->save();
-
-        return redirect($processUrl);
+    /**
+     * Display the Order resource.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function show($id)
+    {
+        $order = Order::findOrFail($id);
+        return view('order.detail', ['order' => $order]);
     }
 
-    public function generate_body_request($order){
+    /**
+     * Generate auth data for login API WebCheckout
+     * @return array
+     */
+    public function auth_data(){
+
         $seed = date('c');
         if (function_exists('random_bytes')) {
             $nonce = bin2hex(random_bytes(16));
@@ -94,9 +104,34 @@ class OrderController extends Controller
         }
         
         $nonceBase64 = base64_encode($nonce);
-        $secretKey = '024h1IlD';
+        $secretKey = $this->api_secretKey;
         $tranKey = base64_encode(sha1($nonce . $seed . $secretKey, true));
         $date_expiration = date('c', strtotime('+10 minute', strtotime($seed)));
+
+        $body = ["auth" => [
+                        "login" => $this->api_login,
+                        "tranKey" => $tranKey,
+                        "nonce" => $nonceBase64,
+                        "seed" => $seed
+                    ]   
+                ];
+                
+        $arr_auth_data = ['auth' => $body, 
+                          'date_expiration' => $date_expiration];
+
+        return $arr_auth_data;
+    }
+
+    /**
+     * Generate the entire body for payment request in API WebCheckout
+     * @param Obj $order
+     * @return json
+     */
+    public function generate_body_request($order){
+
+        $seed = date('c');
+        $auth_data = $this->auth_data()['auth']['auth'];
+        $date_expiration = $this->auth_data()['date_expiration'];
 
         $return_url = url('order/webcheckout/finish', ['id' => $order->id]);
         $description = $order->payment->description;
@@ -106,12 +141,7 @@ class OrderController extends Controller
         $ip_address = $order->payment->ip_address;
         $user_agent = $order->payment->user_agent;
 
-        $body = ["auth" => [
-                    "login" => "6dd490faf9cb87a9862245da41170ff2",
-                    "tranKey" => $tranKey,
-                    "nonce" => $nonceBase64,
-                    "seed" => $seed,
-                    ],
+        $body = ["auth" => $auth_data,
                 "payment" => [
                     "reference" => $reference,
                     "description" => $description,
@@ -130,44 +160,40 @@ class OrderController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
+     * Make the request to webcheckout and redirect to the merchant PlacetoPay
+     * @param int $order_id
+     * @return redirect
      */
-    public function show($id)
-    {
-        $order = Order::findOrFail($id);
-        return view('order.detail', ['order' => $order]);
+    public function webCheckout($order_id){
+
+        $order = Order::findOrFail($order_id);
+        $body_request = $this->generate_body_request($order);
+        $client = new Client(['headers' => ['Content-Type' => 'application/json']]);
+        $request = $client->post($this->api_url, ["body" => $body_request]);
+        $response = $request->getBody();
+        $decode_response = json_decode($response);
+        $processUrl = $decode_response->processUrl;
+        $requestId = $decode_response->requestId;
+        $order->payment->request_id = $requestId;
+        $order->payment->save();
+
+        return redirect($processUrl);
     }
 
-    public function payment_resume($id){
+    /** 
+     * Shows the information of the payment made in the webcheckout
+     * @param int $id
+     * @return redirec
+     * */    
+    public function payment_finish($id){
+
         $order = Order::findOrFail($id);
         $requestId = $order->payment->request_id;
-        $seed = date('c');
-        if (function_exists('random_bytes')) {
-            $nonce = bin2hex(random_bytes(16));
-        } elseif (function_exists('openssl_random_pseudo_bytes')) {
-            $nonce = bin2hex(openssl_random_pseudo_bytes(16));
-        } else {
-            $nonce = mt_rand();
-        }
+        $auth_data = $this->auth_data()['auth'];
+        $body = json_encode($auth_data);
         
-        $nonceBase64 = base64_encode($nonce);
-        $secretKey = '024h1IlD';
-        $tranKey = base64_encode(sha1($nonce . $seed . $secretKey, true));
-        $date_expiration = date('c', strtotime('+10 minute', strtotime($seed)));
-
-        $body = ["auth" => [
-                        "login" => "6dd490faf9cb87a9862245da41170ff2",
-                        "tranKey" => $tranKey,
-                        "nonce" => $nonceBase64,
-                        "seed" => $seed
-                    ]   
-                ];
-
         $client = new Client(['headers' => ['Content-Type' => 'application/json']]);
-        $request = $client->post('https://dev.placetopay.com/redirection/api/session/'.$requestId, ["body" => json_encode($body)]);
+        $request = $client->post($this->api_url . $requestId, ["body" => $body]);
         $response = json_decode($request->getBody());
 
         $payment_status = $response->status->status;
@@ -191,37 +217,4 @@ class OrderController extends Controller
         }
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function edit($id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function update(Request $request, $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function destroy($id)
-    {
-        //
-    }
 }

@@ -19,4 +19,4 @@ Route::resource('order', 'OrderController');
 
 Route::get('order/webcheckout/{id}', 'OrderController@webCheckout');
 
-Route::get('order/webcheckout/finish/{id}', 'OrderController@payment_resume');
+Route::get('order/webcheckout/finish/{id}', 'OrderController@payment_finish');
